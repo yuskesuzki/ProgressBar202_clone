@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw
 from feedgen.feed import FeedGenerator
 
 class YearProgressCloner:
-    base_url = "https://github.com/yuskesuzki/ProgressBar202_clone"
+    base_url = "https://yuskesuzki.github.io/ProgressBar202_clone"
 
     def __init__(self, year=None):
         self.now = datetime.datetime.now()
