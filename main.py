@@ -4,14 +4,17 @@ from PIL import Image, ImageDraw
 from feedgen.feed import FeedGenerator
 
 class YearProgressCloner:
-    base_url = "https://yuskesuzki.github.io/ProgressBar202_clone"
-
     def __init__(self, year=None):
         self.now = datetime.datetime.now()
         self.year = year or self.now.year
         self.image_dir = "images"
         self.state_file = "last_percent.txt"
         self.rss_file = "rss.xml"
+
+        self.github_user = "yuskesuzki"
+        self.repo_name = "ProgressBar202_clone"
+        self.base_url = f"https://{self.github_user}.github.io/{self.repo_name}"
+
         os.makedirs(self.image_dir, exist_ok=True)
 
     def calculate_progress(self):
@@ -42,15 +45,41 @@ class YearProgressCloner:
         inner_width = (width - 2 * padding_x - 10) * (percent / 100)
         if inner_width > 0:
             draw.rectangle([padding_x + 5, padding_y + 5, padding_x + 5 + inner_width, padding_y + bar_height - 5], fill=border_color)
-
-        img_path = os.path.join(self.image_dir, f"progress_{percent}.png")
+        img_filename = f"progress_{percent}.png"
+        img_path = os.path.join(self.image_dir, img_filename)
         img.save(img_path)
-        return img_path
+        return img_filename
 
-    def update_rss(self, percent, img_path):
-        """RSSフィードを生成・更新する"""
-        img_url = f"{self.base_url}/{img_path}"
+    def generate_ogp_html(self, percent, img_filename):
+        """Slackが画像を表示できるようにOGPタグ付きHTMLを生成する"""
+        img_url = f"{self.base_url}/images/{img_filename}"
+        title = f"{self.year} is {percent}% complete."
 
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{title}</title>
+    <meta property="og:title" content="{title}">
+    <meta property="og:description" content="Year Progress Tracker">
+    <meta property="og:image" content="{img_url}">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="{img_url}">
+</head>
+<body style="text-align:center; font-family:sans-serif; padding-top:50px;">
+    <h1>{title}</h1>
+    <img src="{img_url}" alt="Progress Bar" style="max-width:100%; border:1px solid #ccc;">
+</body>
+</html>"""
+
+        html_filename = f"p{percent}.html"
+        html_path = os.path.join(self.image_dir, html_filename)
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+        return html_filename
+
+    def update_rss(self, percent, img_filename, html_filename):
         fg = FeedGenerator()
         fg.id(f"year-progress-{self.year}")
         fg.title(f"Year Progress {self.year}")
@@ -58,18 +87,17 @@ class YearProgressCloner:
         fg.description(f"Clone of Year Progress for {self.year}")
 
         fe = fg.add_entry()
-        content = f"{self.year} is {percent}% complete."
+        content_text = f"{self.year} is {percent}% complete."
         fe.id(f"{self.year}-{percent}")
-        fe.title(content)
+        fe.title(content_text)
 
-        # 対策A: 記事のメインリンクを画像URLにする (Slackはリンク先が画像だと展開しやすい)
-        fe.link(href=img_url)
+        # リンク先を画像ではなく「OGP付きHTML」にする
+        html_url = f"{self.base_url}/images/{html_filename}"
+        fe.link(href=html_url)
 
-        # 対策B: Enclosure（添付ファイル）として画像を明示する
-        # lengthは適当な数値でOK、typeはimage/pngを指定
-        fe.enclosure(img_url, '0', 'image/png')
-
-        fe.content(f"{self.year} is {percent}% complete.<br><img src='{img_url}'>", type='html')
+        # RSSリーダー用のHTMLコンテンツ
+        img_url = f"{self.base_url}/images/{img_filename}"
+        fe.content(f"{content_text}<br><img src='{img_url}'>", type='html')
         fe.published(datetime.datetime.now(datetime.timezone.utc))
 
         fg.rss_file(self.rss_file, pretty=True)
@@ -88,8 +116,9 @@ class YearProgressCloner:
 
         if current_p > last_p:
             print(f"Updating: {current_p}%")
-            path = self.generate_image(current_p)
-            self.update_rss(current_p, path)
+            img_file = self.generate_image(current_p)
+            html_file = self.generate_ogp_html(current_p, img_file)
+            self.update_rss(current_p, img_file, html_file)
             with open(self.state_file, "w") as f:
                 f.write(str(current_p))
             return True
