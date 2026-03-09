@@ -1,0 +1,47 @@
+name: Update Year Progress RSS
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 日本時間 9:00 (UTC 0:00)
+  workflow_dispatch:   # 手動実行ボタンを有効化
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 履歴をすべて取得
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install Pillow feedgen
+
+      - name: Run tests
+        run: python test_main.py
+
+      - name: Run main script
+        run: python main.py
+
+      - name: Commit and Push changes
+        run: |
+          # Gitのユーザー設定（GitHub Actions用）
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # 変更があるファイルをステージング
+          git add rss.xml last_percent.txt images/
+
+          # 変更（差分）がある場合のみコミットしてプッシュ
+          if ! git diff --cached --quiet; then
+            git commit -m "Update year progress: $(cat last_percent.txt)%"
+            git push origin main
+            echo "🚀 変更をコミットしました。"
+          else
+            echo "✅ 変更がないため、コミットをスキップしました。"
+          fi
