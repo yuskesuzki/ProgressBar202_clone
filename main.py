@@ -49,6 +49,8 @@ class YearProgressCloner:
 
     def update_rss(self, percent, img_path):
         """RSSフィードを生成・更新する"""
+        img_url = f"{self.base_url}/{img_path}"
+
         fg = FeedGenerator()
         fg.id(f"year-progress-{self.year}")
         fg.title(f"Year Progress {self.year}")
@@ -60,8 +62,14 @@ class YearProgressCloner:
         fe.id(f"{self.year}-{percent}")
         fe.title(content)
 
-        img_url = f"{self.base_url}/{img_path}"
-        fe.content(f"{content}<br><img src='{img_url}'>", type='html')
+        # 対策A: 記事のメインリンクを画像URLにする (Slackはリンク先が画像だと展開しやすい)
+        fe.link(href=img_url)
+
+        # 対策B: Enclosure（添付ファイル）として画像を明示する
+        # lengthは適当な数値でOK、typeはimage/pngを指定
+        fe.enclosure(img_url, '0', 'image/png')
+
+        fe.content(f"{self.year} is {percent}% complete.<br><img src='{img_url}'>", type='html')
         fe.published(datetime.datetime.now(datetime.timezone.utc))
 
         fg.rss_file(self.rss_file, pretty=True)
