@@ -1,6 +1,6 @@
 import datetime
 import os
-import re
+import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw
 from feedgen.feed import FeedGenerator
 
@@ -18,46 +18,7 @@ class YearProgressCloner:
 
         os.makedirs(self.image_dir, exist_ok=True)
 
-    def update_rss(self, percent, img_filename, html_filename):
-        fg = FeedGenerator()
-        fg.id(f"year-progress-{self.year}")
-        fg.title(f"Year Progress {self.year}")
-        fg.link(href=self.base_url, rel='alternate')
-        fg.description(f"Clone of Year Progress for {self.year}")
-
-        fe = fg.add_entry()
-        content_text = f"{self.year} is {percent}% complete."
-        fe.id(f"{self.year}-{percent}")
-        fe.title(content_text)
-
-        # リンク先を画像ではなく「OGP付きHTML」にする
-        html_url = f"{self.base_url}/images/{html_filename}"
-        fe.link(href=html_url)
-
-        # 後の置換のために description に目印を付けておく
-        fe.description("CONTENT_PLACEHOLDER")
-        fe.published(datetime.datetime.now(datetime.timezone.utc))
-
-        # 一旦文字列として取得
-        rss_feed = fg.rss_str(pretty=True).decode('utf-8')
-
-        # 画像URL
-        img_url = f"{self.base_url}/images/{img_filename}?v={percent}"
-
-        # content:encoded タグを手動で構成
-        content_encoded = f'<content:encoded><![CDATA[ {content_text}<br><img src="{img_url}" /> ]]></content:encoded>'
-
-        # XMLヘッダーに名前空間を追加し、プレースホルダーを置換する
-        rss_feed = rss_feed.replace('<rss ', '<rss xmlns:content="http://purl.org/rss/1.0/modules/content/" ')
-        rss_feed = rss_feed.replace('<description>CONTENT_PLACEHOLDER</description>',
-                                    f'<description>{content_text}</description>{content_encoded}')
-
-        with open(self.rss_file, "w", encoding="utf-8") as f:
-            f.write(rss_feed)
-
-    # ... (generate_image, generate_ogp_html 等の関数定義をここに含める) ...
-    # (前回から変更のない部分は省略せずに含めてください)
-
+    # (calculate_progress, generate_image, generate_ogp_html は前回と同様)
     def calculate_progress(self):
         start = datetime.datetime(self.year, 1, 1)
         end = datetime.datetime(self.year + 1, 1, 1)
@@ -80,22 +41,62 @@ class YearProgressCloner:
     def generate_ogp_html(self, percent, img_file):
         img_url = f"{self.base_url}/images/{img_file}"
         title = f"{self.year} is {percent}% complete."
-        html = f'<html><head><meta property="og:image" content="{img_url}"><meta property="og:title" content="{title}"></head><body><img src="{img_url}"></body></html>'
+        html = f'<!DOCTYPE html><html><head><meta charset="utf-8"><meta property="og:image" content="{img_url}"><meta property="og:title" content="{title}"></head><body><img src="{img_url}"></body></html>'
         filename = f"p{percent}.html"
-        with open(os.path.join(self.image_dir, filename), "w") as f: f.write(html)
+        with open(os.path.join(self.image_dir, filename), "w", encoding="utf-8") as f:
+            f.write(html)
         return filename
+
+    def update_rss(self, percent, img_filename, html_filename):
+        fg = FeedGenerator()
+        fg.id(f"year-progress-{self.year}")
+        fg.title(f"Year Progress {self.year}")
+        fg.link(href=self.base_url, rel='alternate')
+        fg.description(f"Clone of Year Progress for {self.year}")
+
+        fe = fg.add_entry()
+        content_text = f"{self.year} is {percent}% complete."
+        fe.id(f"{self.year}-{percent}")
+        fe.title(content_text)
+        fe.link(href=f"{self.base_url}/images/{html_filename}")
+        fe.description(content_text)
+        fe.published(datetime.datetime.now(datetime.timezone.utc))
+
+        # XMLを一度生成してElementTreeで読み込む
+        rss_bytes = fg.rss_str(pretty=True)
+        ET.register_namespace('content', "http://purl.org/rss/1.0/modules/content/")
+        root = ET.fromstring(rss_bytes)
+
+        # content:encodedタグを手動で追加
+        img_url = f"{self.base_url}/images/{img_filename}?v={percent}"
+        item = root.find('.//item')
+        if item is not None:
+            # {Namespace}Tag の形式で追加
+            content_encoded = ET.SubElement(item, '{http://purl.org/rss/1.0/modules/content/}encoded')
+            content_encoded.text = f'{content_text}<br><img src="{img_url}" />'
+
+        # ファイルに書き出し
+        tree = ET.ElementTree(root)
+        with open(self.rss_file, 'wb') as f:
+            f.write(b'<?xml version="1.0" encoding="UTF-8"?>\n')
+            tree.write(f, encoding='utf-8', xml_declaration=False)
 
     def run(self):
         curr = self.calculate_progress()
         last = -1
         if os.path.exists(self.state_file):
-            with open(self.state_file, "r") as f: last = int(f.read().strip())
+            with open(self.state_file, "r") as f:
+                last = int(f.read().strip())
+
+        # テスト時はここを > ではなく != にするか、last_percent.txtを書き換えてください
         if curr > last:
             print(f"Updating: now {curr}%")
             img = self.generate_image(curr)
             html = self.generate_ogp_html(curr, img)
             self.update_rss(curr, img, html)
-            with open(self.state_file, "w") as f: f.write(str(curr))
+            with open(self.state_file, "w") as f:
+                f.write(str(curr))
+            print(f"✅ RSS updated: {curr}%")
             return True
         else:
             print(f"Not updating: now {curr}%")
