@@ -1,5 +1,6 @@
 import datetime
 import os
+import re
 from PIL import Image, ImageDraw
 from feedgen.feed import FeedGenerator
 
@@ -17,68 +18,6 @@ class YearProgressCloner:
 
         os.makedirs(self.image_dir, exist_ok=True)
 
-    def calculate_progress(self):
-        """1年の進捗率を計算する"""
-        start = datetime.datetime(self.year, 1, 1)
-        end = datetime.datetime(self.year + 1, 1, 1)
-        total_seconds = (end - start).total_seconds()
-        elapsed_seconds = (self.now - start).total_seconds()
-
-        percent = (elapsed_seconds / total_seconds) * 100
-        return int(percent)
-
-    def generate_image(self, percent):
-        """プログレスバー画像を生成する"""
-        width, height = 600, 120
-        bg_color = (255, 255, 255)
-        border_color = (0, 0, 0)
-
-        img = Image.new('RGB', (width, height), bg_color)
-        draw = ImageDraw.Draw(img)
-
-        # 外枠 (ProgressBar202_風のシンプルな矩形)
-        padding_x, padding_y = 40, 40
-        bar_height = 40
-        draw.rectangle([padding_x, padding_y, width - padding_x, padding_y + bar_height], outline=border_color, width=3)
-
-        # 中身の塗りつぶし
-        inner_width = (width - 2 * padding_x - 10) * (percent / 100)
-        if inner_width > 0:
-            draw.rectangle([padding_x + 5, padding_y + 5, padding_x + 5 + inner_width, padding_y + bar_height - 5], fill=border_color)
-        img_filename = f"progress_{percent}.png"
-        img_path = os.path.join(self.image_dir, img_filename)
-        img.save(img_path)
-        return img_filename
-
-    def generate_ogp_html(self, percent, img_filename):
-        """Slackが画像を表示できるようにOGPタグ付きHTMLを生成する"""
-        img_url = f"{self.base_url}/images/{img_filename}"
-        title = f"{self.year} is {percent}% complete."
-
-        html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>{title}</title>
-    <meta property="og:title" content="{title}">
-    <meta property="og:description" content="Year Progress Tracker">
-    <meta property="og:image" content="{img_url}">
-    <meta property="og:type" content="website">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:image" content="{img_url}">
-</head>
-<body style="text-align:center; font-family:sans-serif; padding-top:50px;">
-    <h1>{title}</h1>
-    <img src="{img_url}" alt="Progress Bar" style="max-width:100%; border:1px solid #ccc;">
-</body>
-</html>"""
-
-        html_filename = f"p{percent}.html"
-        html_path = os.path.join(self.image_dir, html_filename)
-        with open(html_path, "w", encoding="utf-8") as f:
-            f.write(html_content)
-        return html_filename
-
     def update_rss(self, percent, img_filename, html_filename):
         fg = FeedGenerator()
         fg.id(f"year-progress-{self.year}")
@@ -95,35 +34,71 @@ class YearProgressCloner:
         html_url = f"{self.base_url}/images/{html_filename}"
         fe.link(href=html_url)
 
-        # RSSリーダー用のHTMLコンテンツ
-        img_url = f"{self.base_url}/images/{img_filename}"
-        fe.content(f"{content_text}<br><img src='{img_url}'>", type='html')
+        # 後の置換のために description に目印を付けておく
+        fe.description("CONTENT_PLACEHOLDER")
         fe.published(datetime.datetime.now(datetime.timezone.utc))
 
-        fg.rss_file(self.rss_file, pretty=True)
+        # 一旦文字列として取得
+        rss_feed = fg.rss_str(pretty=True).decode('utf-8')
+
+        # 画像URL
+        img_url = f"{self.base_url}/images/{img_filename}?v={percent}"
+
+        # content:encoded タグを手動で構成
+        content_encoded = f'<content:encoded><![CDATA[ {content_text}<br><img src="{img_url}" /> ]]></content:encoded>'
+
+        # XMLヘッダーに名前空間を追加し、プレースホルダーを置換する
+        rss_feed = rss_feed.replace('<rss ', '<rss xmlns:content="http://purl.org/rss/1.0/modules/content/" ')
+        rss_feed = rss_feed.replace('<description>CONTENT_PLACEHOLDER</description>',
+                                    f'<description>{content_text}</description>{content_encoded}')
+
+        with open(self.rss_file, "w", encoding="utf-8") as f:
+            f.write(rss_feed)
+
+    # ... (generate_image, generate_ogp_html 等の関数定義をここに含める) ...
+    # (前回から変更のない部分は省略せずに含めてください)
+
+    def calculate_progress(self):
+        start = datetime.datetime(self.year, 1, 1)
+        end = datetime.datetime(self.year + 1, 1, 1)
+        total_seconds = (end - start).total_seconds()
+        elapsed_seconds = (self.now - start).total_seconds()
+        return int((elapsed_seconds / total_seconds) * 100)
+
+    def generate_image(self, percent):
+        width, height = 600, 120
+        img = Image.new('RGB', (width, height), (255, 255, 255))
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([40, 40, 560, 80], outline=(0, 0, 0), width=3)
+        inner_w = (520 - 10) * (percent / 100)
+        if inner_w > 0:
+            draw.rectangle([45, 45, 45 + inner_w, 75], fill=(0, 0, 0))
+        filename = f"progress_{percent}.png"
+        img.save(os.path.join(self.image_dir, filename))
+        return filename
+
+    def generate_ogp_html(self, percent, img_file):
+        img_url = f"{self.base_url}/images/{img_file}"
+        title = f"{self.year} is {percent}% complete."
+        html = f'<html><head><meta property="og:image" content="{img_url}"><meta property="og:title" content="{title}"></head><body><img src="{img_url}"></body></html>'
+        filename = f"p{percent}.html"
+        with open(os.path.join(self.image_dir, filename), "w") as f: f.write(html)
+        return filename
 
     def run(self):
-        current_p = self.calculate_progress()
-
-        date_str = self.now.strftime("%Y-%m-%d")
-        print(f"today: {date_str}")
-
-        # 前回の値をチェック
-        last_p = -1
+        curr = self.calculate_progress()
+        last = -1
         if os.path.exists(self.state_file):
-            with open(self.state_file, "r") as f:
-                last_p = int(f.read().strip())
-
-        if current_p > last_p:
-            print(f"Updating: {current_p}%")
-            img_file = self.generate_image(current_p)
-            html_file = self.generate_ogp_html(current_p, img_file)
-            self.update_rss(current_p, img_file, html_file)
-            with open(self.state_file, "w") as f:
-                f.write(str(current_p))
+            with open(self.state_file, "r") as f: last = int(f.read().strip())
+        if curr > last:
+            print(f"Updating: now {curr}%")
+            img = self.generate_image(curr)
+            html = self.generate_ogp_html(curr, img)
+            self.update_rss(curr, img, html)
+            with open(self.state_file, "w") as f: f.write(str(curr))
             return True
         else:
-            print(f"Not updating: now {current_p}%")
+            print(f"Not updating: now {curr}%")
             return False
 
 if __name__ == "__main__":
