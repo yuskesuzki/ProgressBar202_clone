@@ -24,7 +24,7 @@ class TestYearProgress(unittest.TestCase):
 
     def test_image_generation(self):
         """画像が正常に生成されるか"""
-        path = self.cloner.generate_image(18)
+        path = self.cloner.generate_image(18.5)
         image_path = os.path.join(self.cloner.image_dir, path)
         self.assertTrue(os.path.exists(image_path))
         if os.path.exists(image_path):
