@@ -6,13 +6,13 @@
     <description>Clone of Year Progress for 2026</description>
     <docs>http://www.rssboard.org/rss-specification</docs>
     <generator>python-feedgen</generator>
-    <lastBuildDate>Fri, 01 May 2026 23:55:59 +0000</lastBuildDate>
+    <lastBuildDate>Tue, 05 May 2026 23:54:51 +0000</lastBuildDate>
     <item>
-      <title>2026 is 33% complete.</title>
-      <link>https://yuskesuzki.github.io/ProgressBar202_clone/images/p33.html</link>
-      <description>2026 is 33% complete.</description>
-      <guid isPermaLink="false">2026-33</guid>
-      <pubDate>Fri, 01 May 2026 23:55:59 +0000</pubDate>
-    <content:encoded>2026 is 33% complete.&lt;br&gt;&lt;img src="https://yuskesuzki.github.io/ProgressBar202_clone/images/progress_33.png?v=33" /&gt;</content:encoded></item>
+      <title>2026 is 34% complete.</title>
+      <link>https://yuskesuzki.github.io/ProgressBar202_clone/images/p34.html</link>
+      <description>2026 is 34% complete.</description>
+      <guid isPermaLink="false">2026-34</guid>
+      <pubDate>Tue, 05 May 2026 23:54:51 +0000</pubDate>
+    <content:encoded>2026 is 34% complete.&lt;br&gt;&lt;img src="https://yuskesuzki.github.io/ProgressBar202_clone/images/progress_34.png?v=34" /&gt;</content:encoded></item>
   </channel>
 </rss>
